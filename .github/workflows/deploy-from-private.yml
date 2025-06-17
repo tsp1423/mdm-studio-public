@@ -16,10 +16,12 @@ jobs:
           echo "DEPLOY_FRONTEND=${{ github.event.client_payload.deploy_frontend }}" >> $GITHUB_ENV
           echo "FRONTEND_TYPE=${{ github.event.client_payload.frontend_type }}" >> $GITHUB_ENV
 
-      - name: Checkout Code
+      - name: Checkout Code from Private Repo
         uses: actions/checkout@v4
         with:
+          repository: tsp1423/mdm-studio
           ref: ${{ env.BRANCH }}
+          token: ${{ secrets.TOKEN_PULL_FROM_PRIVATE_REPO }}
 
       - name: Deploy Backend
         if: env.DEPLOY_BACKEND == 'true'
