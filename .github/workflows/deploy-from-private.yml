@@ -11,31 +11,30 @@ jobs:
     steps:
       - name: Set Environment Variables
         run: |
-          echo "DOMAIN=${{ github.event.client_payload.domain }}" >> $GITHUB_ENV
-          echo "FRONTEND_TYPE=${{ github.event.client_payload.frontend_type }}" >> $GITHUB_ENV
+          echo "BRANCH=${{ github.event.client_payload.branch }}" >> $GITHUB_ENV
           echo "DEPLOY_BACKEND=${{ github.event.client_payload.deploy_backend }}" >> $GITHUB_ENV
           echo "DEPLOY_FRONTEND=${{ github.event.client_payload.deploy_frontend }}" >> $GITHUB_ENV
-          echo "REF=${{ github.event.client_payload.ref }}" >> $GITHUB_ENV
+          echo "FRONTEND_TYPE=${{ github.event.client_payload.frontend_type }}" >> $GITHUB_ENV
 
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          ref: ${{ env.REF }}
+          ref: ${{ env.BRANCH }}
 
       - name: Deploy Backend
         if: env.DEPLOY_BACKEND == 'true'
         run: |
-          echo "Deploying backend for $DOMAIN..."
-          # Add your backend deployment logic here
+          echo "Deploying Backend for $BRANCH"
+          # Add backend deployment commands here
 
       - name: Deploy Frontend (Non-Docker)
         if: env.DEPLOY_FRONTEND == 'true' && env.FRONTEND_TYPE == 'non-docker'
         run: |
-          echo "Deploying frontend (non-docker) for $DOMAIN..."
-          # Add your non-docker frontend logic here
+          echo "Deploying Non-Docker Frontend for $BRANCH"
+          # Add non-docker frontend deployment commands here
 
       - name: Deploy Frontend (Docker)
         if: env.DEPLOY_FRONTEND == 'true' && env.FRONTEND_TYPE == 'docker'
         run: |
-          echo "Deploying frontend (docker) for $DOMAIN..."
-          # Add your docker frontend logic here
+          echo "Deploying Docker Frontend for $BRANCH"
+          # Add Docker frontend deployment commands here
