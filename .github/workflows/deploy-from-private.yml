@@ -35,7 +35,7 @@ jobs:
 
       - name: Set Docker Image Name and Tag
         run: |
-          IMAGE_NAME=$(echo "${BRANCH}" | tr '/' '-')
+          IMAGE_NAME=$(echo "${{ env.BRANCH }}" | tr '/' '-')
           TAG=$(date +%Y%m%d-%H%M%S)
           echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
           echo "TAG=$TAG" >> $GITHUB_ENV
@@ -43,19 +43,19 @@ jobs:
       - name: Deploy Backend
         if: env.DEPLOY_BACKEND == 'true'
         run: |
-          echo "Deploying Backend for $BRANCH"
+          echo "Deploying Backend for ${{ env.BRANCH }}"
           # Add backend deployment commands here
 
       - name: Deploy Frontend (Non-Docker)
         if: env.DEPLOY_FRONTEND == 'true' && env.FRONTEND_TYPE == 'non-docker'
         run: |
-          echo "Deploying Non-Docker Frontend for $BRANCH"
+          echo "Deploying Non-Docker Frontend for ${{ env.BRANCH }}"
           # Add non-docker frontend deployment commands here
 
       - name: Deploy Frontend (Docker)
         if: env.DEPLOY_FRONTEND == 'true' && env.FRONTEND_TYPE == 'docker'
         run: |
-          echo "Deploying Docker Frontend for $BRANCH"
-          gcloud builds submit Frontend/ \
-            --config=Frontend/cloudbuild.yaml \
+          echo "Deploying Docker frontend for ${{ env.BRANCH }}"
+          gcloud builds submit frontend/ \
+            --config=frontend/cloudbuild.yaml \
             --substitutions=_IMAGE=$IMAGE_NAME,_TAG=$TAG,_REPO=datamanagement-ui,_REGION=us-central1
