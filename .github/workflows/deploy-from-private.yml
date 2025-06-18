@@ -23,20 +23,30 @@ jobs:
           ref: ${{ env.BRANCH }}
           token: ${{ secrets.TOKEN_PULL_FROM_PRIVATE_REPO }}
 
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: datamanagement-coip
+          service_account_email: datamanagement-coip@appspot.gserviceaccount.com
+          service_account_key: ${{ secrets.GCP_SA_KEY }}
+          export_default_credentials: true
+
       - name: Deploy Backend
         if: env.DEPLOY_BACKEND == 'true'
         run: |
           echo "Deploying Backend for $BRANCH"
-          # Add backend deployment commands here
+          # Add backend deployment logic here
 
       - name: Deploy Frontend (Non-Docker)
         if: env.DEPLOY_FRONTEND == 'true' && env.FRONTEND_TYPE == 'non-docker'
         run: |
           echo "Deploying Non-Docker Frontend for $BRANCH"
-          # Add non-docker frontend deployment commands here
+          # Add non-docker deployment logic here
 
       - name: Deploy Frontend (Docker)
         if: env.DEPLOY_FRONTEND == 'true' && env.FRONTEND_TYPE == 'docker'
         run: |
-          echo "Deploying Docker Frontend for $BRANCH"
-          # Add Docker frontend deployment commands here
+          echo "Deploying Docker Frontend using Cloud Build..."
+          gcloud builds submit Frontend \
+            --config=Frontend/cloudbuild.yaml \
+            --project=datamanagement-coip
