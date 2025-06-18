@@ -57,5 +57,5 @@ jobs:
         run: |
           echo "Deploying Docker Frontend for $BRANCH"
           gcloud builds submit Frontend/ \
-            --config=Frontend/cloudbuild.yml \
+            --config=Frontend/cloudbuild.yaml \
             --substitutions=_IMAGE=$IMAGE_NAME,_TAG=$TAG,_REPO=datamanagement-ui,_REGION=us-central1
