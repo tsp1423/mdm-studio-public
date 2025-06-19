@@ -82,13 +82,10 @@ jobs:
             echo "Repository $REPO_NAME found."
           fi
 
-          echo "Writing lifecycle policy to $POLICY_FILE..."
-          cat <<EOF > $POLICY_FILE
-rules:
-- action: DELETE
-  condition:
-    numNewerVersions: 10
-EOF
+          echo "rules:" > $POLICY_FILE
+          echo "- action: DELETE" >> $POLICY_FILE
+          echo "  condition:" >> $POLICY_FILE
+          echo "    numNewerVersions: 10" >> $POLICY_FILE
 
           echo "Applying lifecycle policy..."
           gcloud artifacts repositories set-policy $REPO_NAME \
