@@ -15,6 +15,7 @@ jobs:
           echo "DEPLOY_BACKEND=${{ github.event.client_payload.deploy_backend }}" >> $GITHUB_ENV
           echo "DEPLOY_FRONTEND=${{ github.event.client_payload.deploy_frontend }}" >> $GITHUB_ENV
           echo "FRONTEND_TYPE=${{ github.event.client_payload.frontend_type }}" >> $GITHUB_ENV
+          echo "IMAGE_DESC=${{ github.event.client_payload.image_description }}" >> $GITHUB_ENV
 
       - name: Checkout Code from Private Repo
         uses: actions/checkout@v4
@@ -58,4 +59,46 @@ jobs:
           echo "Deploying Docker frontend for ${{ env.BRANCH }}"
           gcloud builds submit frontend/ \
             --config=frontend/cloudbuild.yaml \
-            --substitutions=_IMAGE=$IMAGE_NAME,_TAG=$TAG,_REPO=datamanagement-ui,_REGION=us-central1
+            --substitutions=_IMAGE=$IMAGE_NAME,_TAG=$TAG,_REPO=mdmstudio-ui,_REGION=us-central1
+
+      - name: Add Image Description (if provided)
+        if: env.DEPLOY_FRONTEND == 'true' && env.FRONTEND_TYPE == 'docker' && env.IMAGE_DESC != ''
+        run: |
+          echo "Adding description to image..."
+          gcloud artifacts docker images update \
+            us-central1-docker.pkg.dev/datamanagement-coip/mdmstudio-ui/${{ env.IMAGE_NAME }}:${{ env.TAG }} \
+            --update-labels="description=${{ env.IMAGE_DESC }}"
+
+      - name: Set Lifecycle Policy for Artifact Registry
+        run: |
+          REPO_NAME="mdmstudio-ui"
+          REGION="us-central1"
+          POLICY_FILE="lifecycle-policy.yaml"
+
+          echo "Checking if repository '$REPO_NAME' exists in region '$REGION'..."
+          EXISTS=$(gcloud artifacts repositories list \
+            --location=$REGION \
+            --filter="name~$REPO_NAME" \
+            --format="value(name)")
+
+          if [[ -z "$EXISTS" ]]; then
+            echo "Repository $REPO_NAME not found in $REGION."
+            exit 1
+          else
+            echo "Repository $REPO_NAME found."
+          fi
+
+          echo "Writing lifecycle policy to $POLICY_FILE..."
+          cat <<EOF > $POLICY_FILE
+rules:
+- action: DELETE
+  condition:
+    numNewerVersions: 10
+EOF
+
+          echo "Applying lifecycle policy..."
+          gcloud artifacts repositories set-policy $REPO_NAME \
+            --location=$REGION \
+            --lifecycle-policy=$POLICY_FILE
+
+          echo "Lifecycle policy applied successfully."
