@@ -38,8 +38,10 @@ jobs:
         run: |
           IMAGE_NAME=$(echo "${{ env.BRANCH }}" | tr '/' '-')
           TAG=$(date +%Y%m%d-%H%M%S)
+          DESC="${{ env.IMAGE_DESC }}"
           echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
           echo "TAG=$TAG" >> $GITHUB_ENV
+          echo "DESC=$DESC" >> $GITHUB_ENV
 
       - name: Deploy Backend
         if: env.DEPLOY_BACKEND == 'true'
@@ -59,9 +61,7 @@ jobs:
           echo "Deploying Docker frontend for ${{ env.BRANCH }}"
           gcloud builds submit frontend/ \
             --config=frontend/cloudbuild.yaml \
-            --substitutions=_IMAGE=$IMAGE_NAME,_TAG=$TAG,_REPO=mdmstudio-ui,_REGION=us-central1 \
-            --project=datamanagement-coip \
-            --labels=description="${{ env.IMAGE_DESC }}"
+            --substitutions=_IMAGE=${{ env.IMAGE_NAME }},_TAG=${{ env.TAG }},_REPO=mdmstudio-ui,_REGION=us-central1,_DESC="${{ env.DESC }}"
 
       - name: Set Lifecycle Policy for Artifact Registry
         run: |
@@ -83,10 +83,12 @@ jobs:
           fi
 
           echo "Writing lifecycle policy to $POLICY_FILE..."
-          echo "rules:" > $POLICY_FILE
-          echo "- action: DELETE" >> $POLICY_FILE
-          echo "  condition:" >> $POLICY_FILE
-          echo "    numNewerVersions: 10" >> $POLICY_FILE
+          cat <<EOF > $POLICY_FILE
+rules:
+- action: DELETE
+  condition:
+    numNewerVersions: 10
+EOF
 
           echo "Applying lifecycle policy..."
           gcloud artifacts repositories set-policy $REPO_NAME \
