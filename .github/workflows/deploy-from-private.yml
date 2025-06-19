@@ -59,15 +59,9 @@ jobs:
           echo "Deploying Docker frontend for ${{ env.BRANCH }}"
           gcloud builds submit frontend/ \
             --config=frontend/cloudbuild.yaml \
-            --substitutions=_IMAGE=$IMAGE_NAME,_TAG=$TAG,_REPO=mdmstudio-ui,_REGION=us-central1
-
-      - name: Add Image Description (if provided)
-        if: env.DEPLOY_FRONTEND == 'true' && env.FRONTEND_TYPE == 'docker' && env.IMAGE_DESC != ''
-        run: |
-          echo "Adding description to image..."
-          gcloud artifacts docker images update \
-            us-central1-docker.pkg.dev/datamanagement-coip/mdmstudio-ui/${{ env.IMAGE_NAME }}:${{ env.TAG }} \
-            --update-labels="description=${{ env.IMAGE_DESC }}"
+            --substitutions=_IMAGE=$IMAGE_NAME,_TAG=$TAG,_REPO=mdmstudio-ui,_REGION=us-central1 \
+            --project=datamanagement-coip \
+            --labels=description="${{ env.IMAGE_DESC }}"
 
       - name: Set Lifecycle Policy for Artifact Registry
         run: |
