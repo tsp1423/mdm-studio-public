@@ -43,11 +43,23 @@ jobs:
           echo "TAG=$TAG" >> $GITHUB_ENV
           echo "DESC=$DESC" >> $GITHUB_ENV
 
-      - name: Deploy Backend
+      - name: Deploy Backend (Detect Changes)
         if: env.DEPLOY_BACKEND == 'true'
         run: |
-          echo "Deploying Backend for ${{ env.BRANCH }}"
-          # Add backend deployment commands here
+          echo "Checking for changes in Backend/UI_endpoints on branch: ${{ env.BRANCH }}"
+      
+          git fetch --unshallow || true
+      
+          changed_dirs=$(git diff --name-only HEAD~1 HEAD | awk -F/ '/^Backend\/UI_endpoints\// {print $1"/"$2"/"$3}' | sort -u)
+      
+          if [ -z "$changed_dirs" ]; then
+            echo "No changes detected in Backend/UI_endpoints."
+            exit 0
+          fi
+      
+          echo "Changed Cloud Function folders:"
+          echo "$changed_dirs"
+
 
       - name: Deploy Frontend (Non-Docker)
         if: env.DEPLOY_FRONTEND == 'true' && env.FRONTEND_TYPE == 'non-docker'
