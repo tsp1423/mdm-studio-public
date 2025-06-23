@@ -65,15 +65,16 @@ jobs:
               DEPLOY_FN_NAME="${fn_name}_${DOMAIN}"
               echo "Deploying function: $DEPLOY_FN_NAME (from folder $fn_dir)"
               gcloud functions deploy $DEPLOY_FN_NAME \
-                --runtime=python310 \
-                --trigger-http \
-                --entry-point=$fn_name \
-                --source=$fn_dir \
-                --service-account=datamanagement-coip@appspot.com \
-                --region=us-central1 \
-                --allow-unauthenticated \
-                --quiet
-              echo "✅ Successfully deployed function: $DEPLOY_FN_NAME"
+              --runtime=python310 \
+              --trigger-http \
+              --entry-point=$fn_name \
+              --source=$fn_dir \
+              --service-account=datamanagement-coip@appspot.gserviceaccount.com \ 
+              --region=us-central1 \
+              --allow-unauthenticated \
+              --no-gen2 \
+              --quiet
+              echo "Successfully deployed function: $DEPLOY_FN_NAME"
             else
               echo "No changes in: $fn_name"
             fi
@@ -103,7 +104,7 @@ jobs:
             --region=us-central1 \
             --allow-unauthenticated \
             --quiet
-          echo "✅ Successfully deployed frontend to service: $SERVICE_NAME"
+          echo "Successfully deployed frontend to service: $SERVICE_NAME"
 
       - name: Deploy Frontend (Non-Docker)
         if: env.DEPLOY_FRONTEND == 'true' && env.FRONTEND_TYPE == 'non-docker'
