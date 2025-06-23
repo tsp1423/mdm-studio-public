@@ -58,7 +58,7 @@ jobs:
           cat changed_files.txt
 
           echo "Checking for changes in Cloud Function folders:"
-          find Backend/UI_endpoints -mindepth 1 -maxdepth 1 -type d | while read -r fn_dir; do
+          find backend/UI_endpoints -mindepth 1 -maxdepth 1 -type d | while read -r fn_dir; do
             fn_name=$(basename "$fn_dir")
             if grep -q "^$fn_dir/" changed_files.txt; then
               echo "Changed function detected: $fn_name"
