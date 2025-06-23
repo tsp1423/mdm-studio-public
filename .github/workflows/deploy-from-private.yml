@@ -43,25 +43,29 @@ jobs:
           echo "TAG=$TAG" >> $GITHUB_ENV
           echo "DESC=$DESC" >> $GITHUB_ENV
 
-      - name: Deploy Backend (Detect Changes)
+      - name: Deploy Backend (Test Mode - Echo Changed Functions)
         if: env.DEPLOY_BACKEND == 'true'
         run: |
-          echo "Checking for changes in Backend/UI_endpoints on branch: ${{ env.BRANCH }}"
+          echo "Detecting changes in Backend/UI_endpoints for ${{ env.BRANCH }}"
       
+          # Ensure full Git history is available
           git fetch --unshallow || true
-          git fetch origin main
       
-          changed_dirs=$(git diff --name-only origin/main...HEAD | awk -F/ '/^Backend\/UI_endpoints\// {print $1"/"$2"/"$3}' | sort -u)
+          # Get list of changed files in the latest commit
+          git diff --name-only HEAD~1 HEAD > changed_files.txt
       
-          if [ -z "$changed_dirs" ]; then
-            echo "No changes detected in Backend/UI_endpoints."
-            exit 0
-          fi
-      
-          echo "Changed Cloud Function folders:"
-          echo "$changed_dirs"
+          echo "Changed files:"
+          cat changed_files.txt
 
-
+          echo "Checking for changes in Cloud Function folders:"
+          find Backend/UI_endpoints -mindepth 1 -maxdepth 1 -type d | while read -r fn_dir; do
+            fn_name=$(basename "$fn_dir")
+            if grep -q "^$fn_dir/" changed_files.txt; then
+              echo "Changed function detected: $fn_name"
+            else
+              echo "No changes in: $fn_name"
+            fi
+          done
 
       - name: Deploy Frontend (Non-Docker)
         if: env.DEPLOY_FRONTEND == 'true' && env.FRONTEND_TYPE == 'non-docker'
