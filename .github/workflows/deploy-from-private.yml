@@ -63,17 +63,25 @@ jobs:
             fn_name=$(basename "$fn_dir")
             if grep -q "^$fn_dir/" changed_files.txt; then
               DEPLOY_FN_NAME="${fn_name}_${DOMAIN}"
-              echo "Deploying function: $DEPLOY_FN_NAME (from folder $fn_dir)"
-              gcloud functions deploy $DEPLOY_FN_NAME \
-              --runtime=python310 \
-              --trigger-http \
-              --entry-point=$fn_name \
-              --source=$fn_dir \
-              --service-account=datamanagement-coip@appspot.gserviceaccount.com \ 
-              --region=us-central1 \
-              --allow-unauthenticated \
-              --no-gen2 \
-              --quiet
+
+              if [[ "$fn_name" == UI_* ]]; then
+                ENTRY_POINT="${fn_name#UI_}"
+              else
+                ENTRY_POINT="$fn_name"
+              fi
+
+              echo "Deploying function: $DEPLOY_FN_NAME (entry point: $ENTRY_POINT)"
+              gcloud functions deploy "$DEPLOY_FN_NAME" \
+                --runtime=python310 \
+                --trigger-http \
+                --entry-point="$ENTRY_POINT" \
+                --source="$fn_dir" \
+                --service-account=datamanagement-coip@appspot.gserviceaccount.com \
+                --region=us-central1 \
+                --allow-unauthenticated \
+                --no-gen2 \
+                --quiet
+
               echo "Successfully deployed function: $DEPLOY_FN_NAME"
             else
               echo "No changes in: $fn_name"
@@ -98,12 +106,13 @@ jobs:
           DOMAIN=$(echo "${BRANCH}" | cut -d'/' -f1)
           SERVICE_NAME="${DOMAIN}-ui"
           echo "Deploying Docker frontend to Cloud Run service: $SERVICE_NAME"
-          gcloud run deploy $SERVICE_NAME \
+          gcloud run deploy "$SERVICE_NAME" \
             --image=us-central1-docker.pkg.dev/datamanagement-coip/mdmstudio-ui/${IMAGE_NAME}:${TAG} \
             --platform=managed \
             --region=us-central1 \
             --allow-unauthenticated \
             --quiet
+
           echo "Successfully deployed frontend to service: $SERVICE_NAME"
 
       - name: Deploy Frontend (Non-Docker)
