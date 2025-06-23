@@ -11,6 +11,7 @@ jobs:
     steps:
       - name: Set Environment Variables
         run: |
+          set -euo pipefail
           echo "BRANCH=${{ github.event.client_payload.branch }}" >> $GITHUB_ENV
           echo "DEPLOY_BACKEND=${{ github.event.client_payload.deploy_backend }}" >> $GITHUB_ENV
           echo "DEPLOY_FRONTEND=${{ github.event.client_payload.deploy_frontend }}" >> $GITHUB_ENV
@@ -36,6 +37,7 @@ jobs:
 
       - name: Set Docker Image Name and Tag
         run: |
+          set -euo pipefail
           IMAGE_NAME=$(echo "${{ env.BRANCH }}" | tr '/' '-')
           TAG=$(date +%Y%m%d-%H%M%S)
           DESC="${{ env.IMAGE_DESC }}"
@@ -43,40 +45,69 @@ jobs:
           echo "TAG=$TAG" >> $GITHUB_ENV
           echo "DESC=$DESC" >> $GITHUB_ENV
 
-      - name: Deploy Backend (Test Mode - Echo Changed Functions)
+      - name: Deploy Changed Backend Functions (backend/UI_endpoints/*)
         if: env.DEPLOY_BACKEND == 'true'
         run: |
-          echo "Detecting changes in Backend/UI_endpoints for ${{ env.BRANCH }}"
-      
-          # Ensure full Git history is available
+          set -euo pipefail
+          echo "Detecting and deploying changed Cloud Functions in backend/UI_endpoints..."
+
           git fetch --unshallow || true
-      
-          # Get list of changed files in the latest commit
           git diff --name-only HEAD~1 HEAD > changed_files.txt
-      
+
           echo "Changed files:"
           cat changed_files.txt
 
-          echo "Checking for changes in Cloud Function folders:"
+          DOMAIN=$(echo "${{ env.BRANCH }}" | cut -d'/' -f1)
+
           find backend/UI_endpoints -mindepth 1 -maxdepth 1 -type d | while read -r fn_dir; do
             fn_name=$(basename "$fn_dir")
             if grep -q "^$fn_dir/" changed_files.txt; then
-              echo "Changed function detected: $fn_name"
+              DEPLOY_FN_NAME="${fn_name}_${DOMAIN}"
+              echo "Deploying function: $DEPLOY_FN_NAME (from folder $fn_dir)"
+              gcloud functions deploy $DEPLOY_FN_NAME \
+                --runtime=python310 \
+                --trigger-http \
+                --entry-point=$fn_name \
+                --source=$fn_dir \
+                --service-account=datamanagement-coip@appspot.com \
+                --region=us-central1 \
+                --allow-unauthenticated \
+                --quiet
+              echo "✅ Successfully deployed function: $DEPLOY_FN_NAME"
             else
               echo "No changes in: $fn_name"
             fi
           done
 
+      - name: Build Frontend Docker Image
+        id: build_ui
+        if: env.DEPLOY_FRONTEND == 'true' && env.FRONTEND_TYPE == 'docker'
+        run: |
+          set -euo pipefail
+          echo "Building Docker image for frontend..."
+          gcloud builds submit frontend/ \
+            --config=frontend/cloudbuild.yaml \
+            --substitutions=_IMAGE=${IMAGE_NAME},_TAG=${TAG},_REPO=mdmstudio-ui,_REGION=us-central1,_DESC="${IMAGE_DESC}" \
+            --quiet
+
+      - name: Deploy Frontend (Docker)
+        if: steps.build_ui.outcome == 'success'
+        run: |
+          set -euo pipefail
+          DOMAIN=$(echo "${BRANCH}" | cut -d'/' -f1)
+          SERVICE_NAME="${DOMAIN}-ui"
+          echo "Deploying Docker frontend to Cloud Run service: $SERVICE_NAME"
+          gcloud run deploy $SERVICE_NAME \
+            --image=us-central1-docker.pkg.dev/datamanagement-coip/mdmstudio-ui/${IMAGE_NAME}:${TAG} \
+            --platform=managed \
+            --region=us-central1 \
+            --allow-unauthenticated \
+            --quiet
+          echo "✅ Successfully deployed frontend to service: $SERVICE_NAME"
+
       - name: Deploy Frontend (Non-Docker)
         if: env.DEPLOY_FRONTEND == 'true' && env.FRONTEND_TYPE == 'non-docker'
         run: |
+          set -euo pipefail
           echo "Deploying Non-Docker Frontend for ${{ env.BRANCH }}"
-          # Add non-docker frontend deployment commands here
-
-      - name: Deploy Frontend (Docker)
-        if: env.DEPLOY_FRONTEND == 'true' && env.FRONTEND_TYPE == 'docker'
-        run: |
-          echo "Deploying Docker frontend for ${{ env.BRANCH }}"
-          gcloud builds submit frontend/ \
-            --config=frontend/cloudbuild.yaml \
-            --substitutions=_IMAGE=${{ env.IMAGE_NAME }},_TAG=${{ env.TAG }},_REPO=mdmstudio-ui,_REGION=us-central1,_DESC="${{ env.DESC }}"
+          # TODO: Add VM/rsync/scp-based deployment logic here
