@@ -106,7 +106,7 @@ jobs:
               echo "Building new Docker image. TAG=$TAG"
             else
               echo "Fetching latest image tag for $IMAGE_NAME from GCR..."
-              TAG=$(gcloud artifacts docker images list us-central1-docker.pkg.dev/datamanagement-coip/mdmstudio-ui/${IMAGE_NAME} \
+              TAG=$(gcloud artifacts docker images list us-central1-docker.pkg.dev/datamanagement-coip/mdmstudio-ui/
                 --sort-by=~UPDATE_TIME \
                 --limit=1 \
                 --format="value(TAGS)" | cut -d',' -f1)
