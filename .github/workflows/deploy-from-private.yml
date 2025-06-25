@@ -35,16 +35,6 @@ jobs:
         with:
           project_id: datamanagement-coip
 
-      - name: Set Docker Image Name and Tag
-        run: |
-          set -euo pipefail
-          IMAGE_NAME=$(echo "${{ env.BRANCH }}" | tr '/' '-')
-          TAG=$(date +%Y%m%d-%H%M%S)
-          DESC="${{ env.IMAGE_DESC }}"
-          echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
-          echo "TAG=$TAG" >> $GITHUB_ENV
-          echo "DESC=$DESC" >> $GITHUB_ENV
-
       - name: Deploy Changed Backend Functions (backend/UI_endpoints/*)
         if: env.DEPLOY_BACKEND == 'true'
         run: |
@@ -104,6 +94,35 @@ jobs:
             echo "CHANGED_FRONTEND=true" >> $GITHUB_ENV
           fi
 
+      - name: Set Docker Image Name and Tag
+        run: |
+          set -euo pipefail
+          IMAGE_NAME=$(echo "${{ env.BRANCH }}" | tr '/' '-')
+          echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
+
+          if [[ "${{ env.DEPLOY_FRONTEND }}" == "true" && "${{ env.FRONTEND_TYPE }}" == "docker" ]]; then
+            if [[ "${{ env.CHANGED_FRONTEND }}" == "true" ]]; then
+              TAG=$(date +%Y%m%d-%H%M%S)
+              echo "Building new Docker image. TAG=$TAG"
+            else
+              echo "Fetching latest image tag for $IMAGE_NAME from GCR..."
+              TAG=$(gcloud artifacts docker images list us-central1-docker.pkg.dev/datamanagement-coip/mdmstudio-ui/${IMAGE_NAME} \
+                --sort-by=~UPDATE_TIME \
+                --limit=1 \
+                --format="value(TAGS)" | cut -d',' -f1)
+
+              if [[ -z "$TAG" ]]; then
+                echo "No existing image found and no changes detected to build a new one."
+                exit 1
+              fi
+
+              echo "Reusing existing image TAG=$TAG"
+            fi
+            echo "TAG=$TAG" >> $GITHUB_ENV
+          fi
+
+          echo "DESC=${{ env.IMAGE_DESC }}" >> $GITHUB_ENV
+
       - name: Build Frontend Docker Image
         id: build_ui
         if: env.DEPLOY_FRONTEND == 'true' && env.FRONTEND_TYPE == 'docker' && env.CHANGED_FRONTEND == 'true'
@@ -112,11 +131,11 @@ jobs:
           echo "Building Docker image for frontend..."
           gcloud builds submit frontend/ \
             --config=frontend/cloudbuild.yaml \
-            --substitutions=_IMAGE=${IMAGE_NAME},_TAG=${TAG},_REPO=mdmstudio-ui,_REGION=us-central1,_DESC="${IMAGE_DESC}" \
+            --substitutions=_IMAGE=${IMAGE_NAME},_TAG=${TAG},_REPO=mdmstudio-ui,_REGION=us-central1,_DESC="${DESC}" \
             --quiet
 
       - name: Deploy Frontend (Docker → Cloud Run)
-        if: steps.build_ui.outcome == 'success' && startsWith(env.BRANCH, 'retail/')
+        if: env.DEPLOY_FRONTEND == 'true' && env.FRONTEND_TYPE == 'docker' && startsWith(env.BRANCH, 'retail/')
         run: |
           set -euo pipefail
           DOMAIN=$(echo "${BRANCH}" | cut -d'/' -f1)
@@ -128,10 +147,11 @@ jobs:
             --region=us-central1 \
             --allow-unauthenticated \
             --quiet
+
           echo "Successfully deployed frontend to service: $SERVICE_NAME"
 
       - name: Allow Public Access to Cloud Run
-        if: steps.build_ui.outcome == 'success' && startsWith(env.BRANCH, 'retail/')
+        if: env.DEPLOY_FRONTEND == 'true' && env.FRONTEND_TYPE == 'docker' && startsWith(env.BRANCH, 'retail/')
         run: |
           set -euo pipefail
           DOMAIN=$(echo "${BRANCH}" | cut -d'/' -f1)
