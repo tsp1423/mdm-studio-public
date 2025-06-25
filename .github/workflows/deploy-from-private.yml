@@ -88,9 +88,25 @@ jobs:
             fi
           done
 
+      - name: Check for Changes in Frontend
+        id: check_frontend
+        run: |
+          set -euo pipefail
+          git fetch --unshallow || true
+          BASE_SHA=$(git merge-base origin/${{ env.BRANCH }} HEAD)
+          CHANGED=$(git diff --name-only $BASE_SHA HEAD | grep '^frontend/' || true)
+
+          if [[ -z "$CHANGED" ]]; then
+            echo "Frontend not changed."
+            echo "CHANGED_FRONTEND=false" >> $GITHUB_ENV
+          else
+            echo "Frontend has changes."
+            echo "CHANGED_FRONTEND=true" >> $GITHUB_ENV
+          fi
+
       - name: Build Frontend Docker Image
         id: build_ui
-        if: env.DEPLOY_FRONTEND == 'true' && env.FRONTEND_TYPE == 'docker'
+        if: env.DEPLOY_FRONTEND == 'true' && env.FRONTEND_TYPE == 'docker' && env.CHANGED_FRONTEND == 'true'
         run: |
           set -euo pipefail
           echo "Building Docker image for frontend..."
@@ -99,8 +115,8 @@ jobs:
             --substitutions=_IMAGE=${IMAGE_NAME},_TAG=${TAG},_REPO=mdmstudio-ui,_REGION=us-central1,_DESC="${IMAGE_DESC}" \
             --quiet
 
-      - name: Deploy Frontend (Docker)
-        if: steps.build_ui.outcome == 'success'
+      - name: Deploy Frontend (Docker → Cloud Run)
+        if: steps.build_ui.outcome == 'success' && startsWith(env.BRANCH, 'retail/')
         run: |
           set -euo pipefail
           DOMAIN=$(echo "${BRANCH}" | cut -d'/' -f1)
@@ -112,8 +128,21 @@ jobs:
             --region=us-central1 \
             --allow-unauthenticated \
             --quiet
-
           echo "Successfully deployed frontend to service: $SERVICE_NAME"
+
+      - name: Allow Public Access to Cloud Run
+        if: steps.build_ui.outcome == 'success' && startsWith(env.BRANCH, 'retail/')
+        run: |
+          set -euo pipefail
+          DOMAIN=$(echo "${BRANCH}" | cut -d'/' -f1)
+          SERVICE_NAME="${DOMAIN}-ui"
+          echo "Setting public access on Cloud Run service: $SERVICE_NAME"
+          gcloud run services add-iam-policy-binding "$SERVICE_NAME" \
+            --member="allUsers" \
+            --role="roles/run.invoker" \
+            --region=us-central1 \
+            --platform=managed \
+            --quiet
 
       - name: Deploy Frontend (Non-Docker)
         if: env.DEPLOY_FRONTEND == 'true' && env.FRONTEND_TYPE == 'non-docker'
