@@ -39,15 +39,27 @@ jobs:
         if: env.DEPLOY_BACKEND == 'true'
         run: |
           set -euo pipefail
+          echo "Detecting and deploying changed Cloud Functions in backend/UI_endpoints..."
+
           git fetch --unshallow || true
           git diff --name-only HEAD~1 HEAD > changed_files.txt
+
+          echo "Changed files:"
+          cat changed_files.txt
+
           DOMAIN=$(echo "${{ env.BRANCH }}" | cut -d'/' -f1)
 
           find backend/UI_endpoints -mindepth 1 -maxdepth 1 -type d | while read -r fn_dir; do
             fn_name=$(basename "$fn_dir")
             if grep -q "^$fn_dir/" changed_files.txt; then
               DEPLOY_FN_NAME="${fn_name}_${DOMAIN}"
-              ENTRY_POINT="${fn_name#UI_}"
+
+              if [[ "$fn_name" == UI_* ]]; then
+                ENTRY_POINT="${fn_name#UI_}"
+              else
+                ENTRY_POINT="$fn_name"
+              fi
+
               echo "Deploying function: $DEPLOY_FN_NAME (entry point: $ENTRY_POINT)"
               gcloud functions deploy "$DEPLOY_FN_NAME" \
                 --runtime=python310 \
@@ -59,6 +71,10 @@ jobs:
                 --allow-unauthenticated \
                 --no-gen2 \
                 --quiet
+
+              echo "Successfully deployed function: $DEPLOY_FN_NAME"
+            else
+              echo "No changes in: $fn_name"
             fi
           done
 
@@ -71,8 +87,10 @@ jobs:
           CHANGED=$(git diff --name-only $BASE_SHA HEAD | grep '^frontend/' || true)
 
           if [[ -z "$CHANGED" ]]; then
+            echo "Frontend not changed."
             echo "CHANGED_FRONTEND=false" >> $GITHUB_ENV
           else
+            echo "Frontend has changes."
             echo "CHANGED_FRONTEND=true" >> $GITHUB_ENV
           fi
 
@@ -81,18 +99,18 @@ jobs:
           set -euo pipefail
           IMAGE_NAME=$(echo "${{ env.BRANCH }}" | tr '/' '-')
           echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
-          echo "DESC=${{ env.IMAGE_DESC }}" >> $GITHUB_ENV
 
           if [[ "${{ env.DEPLOY_FRONTEND }}" == "true" && "${{ env.FRONTEND_TYPE }}" == "docker" ]]; then
             if [[ "${{ env.CHANGED_FRONTEND }}" == "true" ]]; then
               TAG=$(date +%Y%m%d-%H%M%S)
-              echo "TAG=$TAG" >> $GITHUB_ENV
+              echo "Building new Docker image. TAG=$TAG"
             else
               echo "Looking up latest image tag for $IMAGE_NAME from GCR..."
-              TAG=$(gcloud artifacts docker images list us-central1-docker.pkg.dev/datamanagement-coip/mdmstudio-ui \
-                --include-tags \
-                --sort-by=~UPDATE_TIME \
-                --format="value(TAGS)" | grep "${IMAGE_NAME}" | grep -oE '[^,]+' | head -n1)
+              TAG=$(gcloud artifacts docker tags list \
+                us-central1-docker.pkg.dev/datamanagement-coip/mdmstudio-ui/${IMAGE_NAME} \
+                --sort-by=~createTime \
+                --limit=1 \
+                --format="value(tag)")
 
               if [[ -z "$TAG" ]]; then
                 echo "No image found and frontend not changed. Exiting."
@@ -100,15 +118,18 @@ jobs:
               fi
 
               echo "Using existing image TAG=$TAG"
-              echo "TAG=$TAG" >> $GITHUB_ENV
             fi
+            echo "TAG=$TAG" >> $GITHUB_ENV
           fi
+
+          echo "DESC=${{ env.IMAGE_DESC }}" >> $GITHUB_ENV
 
       - name: Build Frontend Docker Image
         id: build_ui
         if: env.DEPLOY_FRONTEND == 'true' && env.FRONTEND_TYPE == 'docker' && env.CHANGED_FRONTEND == 'true'
         run: |
           set -euo pipefail
+          echo "Building Docker image for frontend..."
           gcloud builds submit frontend/ \
             --config=frontend/cloudbuild.yaml \
             --substitutions=_IMAGE=${IMAGE_NAME},_TAG=${TAG},_REPO=mdmstudio-ui,_REGION=us-central1,_DESC="${DESC}" \
@@ -120,6 +141,7 @@ jobs:
           set -euo pipefail
           DOMAIN=$(echo "${BRANCH}" | cut -d'/' -f1)
           SERVICE_NAME="${DOMAIN}-ui"
+          echo "Deploying Docker frontend to Cloud Run service: $SERVICE_NAME"
           gcloud run deploy "$SERVICE_NAME" \
             --image=us-central1-docker.pkg.dev/datamanagement-coip/mdmstudio-ui/${IMAGE_NAME}:${TAG} \
             --platform=managed \
@@ -127,12 +149,15 @@ jobs:
             --allow-unauthenticated \
             --quiet
 
+          echo "Successfully deployed frontend to service: $SERVICE_NAME"
+
       - name: Allow Public Access to Cloud Run
         if: env.DEPLOY_FRONTEND == 'true' && env.FRONTEND_TYPE == 'docker' && startsWith(env.BRANCH, 'retail/')
         run: |
           set -euo pipefail
           DOMAIN=$(echo "${BRANCH}" | cut -d'/' -f1)
           SERVICE_NAME="${DOMAIN}-ui"
+          echo "Setting public access on Cloud Run service: $SERVICE_NAME"
           gcloud run services add-iam-policy-binding "$SERVICE_NAME" \
             --member="allUsers" \
             --role="roles/run.invoker" \
