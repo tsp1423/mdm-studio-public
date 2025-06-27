@@ -52,27 +52,33 @@ jobs:
           find backend/UI_endpoints -mindepth 1 -maxdepth 1 -type d | while read -r fn_dir; do
             fn_name=$(basename "$fn_dir")
             if grep -q "^$fn_dir/" changed_files.txt; then
-              DEPLOY_FN_NAME="${fn_name}_${DOMAIN}"
+              MAIN_FILE="$fn_dir/main.py"
 
-              if [[ "$fn_name" == UI_* ]]; then
-                ENTRY_POINT="${fn_name#UI_}"
+              if [[ -f "$MAIN_FILE" ]]; then
+                ENTRY_POINT=$(grep -Po '@app\.route\([^)]+\)\s*\ndef\s+\K\w+' "$MAIN_FILE" | head -n1 || true)
+
+                if [[ -n "$ENTRY_POINT" ]]; then
+                  DEPLOY_FN_NAME="${fn_name}-${DOMAIN}"
+                  echo "Deploying $DEPLOY_FN_NAME with entry point: $ENTRY_POINT"
+
+                  gcloud functions deploy "$DEPLOY_FN_NAME" \
+                    --runtime python310 \
+                    --trigger-http \
+                    --entry-point "$ENTRY_POINT" \
+                    --source "$fn_dir" \
+                    --region us-central1 \
+                    --allow-unauthenticated \
+                    --service-account datamanagement-coip@appspot.gserviceaccount.com \
+                    --no-gen2 \
+                    --quiet
+
+                  echo "Successfully deployed: $DEPLOY_FN_NAME"
+                else
+                  echo "No @app.route entry point found in $MAIN_FILE. Skipping..."
+                fi
               else
-                ENTRY_POINT="$fn_name"
+                echo "main.py not found in $fn_dir. Skipping..."
               fi
-
-              echo "Deploying function: $DEPLOY_FN_NAME (entry point: $ENTRY_POINT)"
-              gcloud functions deploy "$DEPLOY_FN_NAME" \
-                --runtime=python310 \
-                --trigger-http \
-                --entry-point="$ENTRY_POINT" \
-                --source="$fn_dir" \
-                --service-account=datamanagement-coip@appspot.gserviceaccount.com \
-                --region=us-central1 \
-                --allow-unauthenticated \
-                --no-gen2 \
-                --quiet
-
-              echo "Successfully deployed function: $DEPLOY_FN_NAME"
             else
               echo "No changes in: $fn_name"
             fi
