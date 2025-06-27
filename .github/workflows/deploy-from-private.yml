@@ -40,47 +40,51 @@ jobs:
         run: |
           set -euo pipefail
           echo "Detecting and deploying changed Cloud Functions in backend/UI_endpoints..."
-
+      
           git fetch --unshallow || true
-          git diff --name-only HEAD~1 HEAD > changed_files.txt
-
-          echo "Changed files:"
-          cat changed_files.txt
-
+      
           DOMAIN=$(echo "${{ env.BRANCH }}" | cut -d'/' -f1)
-
+      
+          # Get the last commit that changed backend/UI_endpoints/*
+          LAST_BACKEND_COMMIT=$(git log -n 1 --pretty=format:"%H" -- backend/UI_endpoints)
+          CURRENT_COMMIT=$(git rev-parse HEAD)
+      
+          if [[ "$LAST_BACKEND_COMMIT" == "$CURRENT_COMMIT" ]]; then
+            echo "Backend code changed in this commit. Checking individual functions..."
+          else
+            echo "No backend changes detected in this commit. Skipping deployment."
+            exit 0
+          fi
+      
           find backend/UI_endpoints -mindepth 1 -maxdepth 1 -type d | while read -r fn_dir; do
             fn_name=$(basename "$fn_dir")
-            if grep -q "^$fn_dir/" changed_files.txt; then
-              MAIN_FILE="$fn_dir/main.py"
-
-              if [[ -f "$MAIN_FILE" ]]; then
-                ENTRY_POINT=$(grep -Po '@app\.route\([^)]+\)\s*\ndef\s+\K\w+' "$MAIN_FILE" | head -n1 || true)
-
-                if [[ -n "$ENTRY_POINT" ]]; then
-                  DEPLOY_FN_NAME="${fn_name}-${DOMAIN}"
-                  echo "Deploying $DEPLOY_FN_NAME with entry point: $ENTRY_POINT"
-
-                  # gcloud functions deploy "$DEPLOY_FN_NAME" \
-                  #   --runtime python310 \
-                  #   --trigger-http \
-                  #   --entry-point "$ENTRY_POINT" \
-                  #   --source "$fn_dir" \
-                  #   --region us-central1 \
-                  #   --allow-unauthenticated \
-                  #   --service-account datamanagement-coip@appspot.gserviceaccount.com \
-                  #   --no-gen2 \
-                  #   --quiet
-
-                  echo "Successfully deployed: $DEPLOY_FN_NAME"
-                else
-                  echo "No @app.route entry point found in $MAIN_FILE. Skipping..."
-                fi
+            MAIN_FILE="$fn_dir/main.py"
+      
+            if [[ -f "$MAIN_FILE" ]]; then
+              ENTRY_POINT=$(grep -Po '@app\.route\([^)]+\)\s*\ndef\s+\K\w+' "$MAIN_FILE" | head -n1 || true)
+      
+              if [[ -n "$ENTRY_POINT" ]]; then
+                DEPLOY_FN_NAME="${fn_name}-${DOMAIN}"
+                echo "Deploying $DEPLOY_FN_NAME with entry point: $ENTRY_POINT"
+      
+                # Uncomment to deploy
+                # gcloud functions deploy "$DEPLOY_FN_NAME" \
+                #   --runtime python310 \
+                #   --trigger-http \
+                #   --entry-point "$ENTRY_POINT" \
+                #   --source "$fn_dir" \
+                #   --region us-central1 \
+                #   --allow-unauthenticated \
+                #   --service-account datamanagement-coip@appspot.gserviceaccount.com \
+                #   --no-gen2 \
+                #   --quiet
+      
+                echo "Successfully deployed: $DEPLOY_FN_NAME"
               else
-                echo "main.py not found in $fn_dir. Skipping..."
+                echo "No @app.route entry point found in $MAIN_FILE. Skipping..."
               fi
             else
-              echo "No changes in: $fn_name"
+              echo "main.py not found in $fn_dir. Skipping..."
             fi
           done
 
